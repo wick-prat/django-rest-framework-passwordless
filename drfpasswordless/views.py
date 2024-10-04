@@ -144,8 +144,8 @@ class AbstractBaseObtainAuthToken(APIView):
             token_creator = import_string(api_settings.PASSWORDLESS_AUTH_TOKEN_CREATOR)
             (token, _) = token_creator(
                 user=user,
-                device_id=serializer.validated_data.get("device_id", ""),
-                device_type=serializer.validated_data.get("device_type", ""),
+                device_id=serializer.validated_data.get("device_id", None),
+                device_type=serializer.validated_data.get("device_type", None),
             )
 
             if token:

@@ -210,5 +210,5 @@ def send_sms_with_callback_token(user, mobile_token, **kwargs):
 
 def create_authentication_token(user, device_id="", device_type=""):
     return Token.objects.get_or_create(
-        user=user, device_id=device_id, device_type=device_type
+        user=user, device_id=device_id, defaults={"device_type": device_type}
     )
