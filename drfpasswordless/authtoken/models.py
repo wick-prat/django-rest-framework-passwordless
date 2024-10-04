@@ -42,6 +42,7 @@ class Token(models.Model):
         abstract = 'drfpasswordless.authtoken' not in settings.INSTALLED_APPS
         verbose_name = _("Token")
         verbose_name_plural = _("Tokens")
+        unique_together = (('key', 'device_id'),)
 
     def save(self, *args, **kwargs):
         if not self.key:
