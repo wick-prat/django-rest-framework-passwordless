@@ -1,7 +1,7 @@
 from django.contrib.auth import get_user_model
 from django.core.management.base import BaseCommand, CommandError
 
-from rest_framework.authtoken.models import Token
+from drfpasswordless.authtoken.models import Token
 
 UserModel = get_user_model()
 

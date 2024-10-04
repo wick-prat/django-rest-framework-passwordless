@@ -200,6 +200,8 @@ class AbstractBaseCallbackTokenSerializer(serializers.Serializer):
 
 
 class CallbackTokenAuthSerializer(AbstractBaseCallbackTokenSerializer):
+    device_id = serializers.CharField(required=False, max_length=64)
+    device_type = serializers.ChoiceField(choices=Token.DEVICE_TYPES, required=False)
 
     def validate(self, attrs):
         # Check Aliases

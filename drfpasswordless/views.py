@@ -134,14 +134,19 @@ class AbstractBaseObtainAuthToken(APIView):
     This is a duplicate of rest_framework's own ObtainAuthToken method.
     Instead, this returns an Auth Token based on our 6 digit callback token and source.
     """
+
     serializer_class = None
 
     def post(self, request, *args, **kwargs):
         serializer = self.serializer_class(data=request.data)
         if serializer.is_valid(raise_exception=True):
-            user = serializer.validated_data['user']
+            user = serializer.validated_data["user"]
             token_creator = import_string(api_settings.PASSWORDLESS_AUTH_TOKEN_CREATOR)
-            (token, _) = token_creator(user)
+            (token, _) = token_creator(
+                user=user,
+                device_id=serializer.validated_data.get("device_id", ""),
+                device_type=serializer.validated_data.get("device_type", ""),
+            )
 
             if token:
                 TokenSerializer = import_string(api_settings.PASSWORDLESS_AUTH_TOKEN_SERIALIZER)
@@ -150,8 +155,15 @@ class AbstractBaseObtainAuthToken(APIView):
                     # Return our key for consumption.
                     return Response(token_serializer.data, status=status.HTTP_200_OK)
         else:
-            logger.error("Couldn't log in unknown user. Errors on serializer: {}".format(serializer.error_messages))
-        return Response({'detail': 'Couldn\'t log you in. Try again later.'}, status=status.HTTP_400_BAD_REQUEST)
+            logger.error(
+                "Couldn't log in unknown user. Errors on serializer: {}".format(
+                    serializer.error_messages
+                )
+            )
+        return Response(
+            {"detail": "Couldn't log you in. Try again later."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
 
 
 class ObtainAuthTokenFromCallbackToken(AbstractBaseObtainAuthToken):
