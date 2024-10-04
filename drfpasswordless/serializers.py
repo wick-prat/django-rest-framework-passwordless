@@ -8,7 +8,7 @@ from rest_framework.exceptions import ValidationError
 from drfpasswordless.models import CallbackToken
 from drfpasswordless.settings import api_settings
 from drfpasswordless.utils import verify_user_alias, validate_token_age
-
+from drfpasswordless.authtoken.models import Token
 logger = logging.getLogger(__name__)
 User = get_user_model()
 
@@ -200,6 +200,8 @@ class AbstractBaseCallbackTokenSerializer(serializers.Serializer):
 
 
 class CallbackTokenAuthSerializer(AbstractBaseCallbackTokenSerializer):
+    device_id = serializers.CharField(required=False, max_length=64)
+    device_type = serializers.ChoiceField(choices=Token.DEVICE_TYPES, required=False)
 
     def validate(self, attrs):
         # Check Aliases

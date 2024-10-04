@@ -1,5 +1,5 @@
 from rest_framework import parsers, renderers
-from rest_framework.authtoken.models import Token
+from drfpasswordless.authtoken.models import Token
 from rest_framework.authtoken.serializers import AuthTokenSerializer
 from rest_framework.compat import coreapi, coreschema
 from rest_framework.response import Response
