@@ -15,6 +15,7 @@ from drfpasswordless.serializers import (
     MobileVerificationSerializer,
 )
 from drfpasswordless.services import TokenService
+from drfpasswordless.authtoken.models import Token
 
 logger = logging.getLogger(__name__)
 
@@ -190,3 +191,11 @@ class VerifyAliasFromCallbackToken(APIView):
             logger.error("Couldn't verify unknown user. Errors on serializer: {}".format(serializer.error_messages))
 
         return Response({'detail': 'We couldn\'t verify this alias. Try again later.'}, status.HTTP_400_BAD_REQUEST)
+
+
+class LogoutView(APIView):
+    permission_classes = [IsAuthenticated]
+    def post(self, request):
+        token = Token.objects.get(user=request.user)
+        token.delete()
+        return Response({"detail": "Successfully logged out."}, status=status.HTTP_200_OK)

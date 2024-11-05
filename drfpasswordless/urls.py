@@ -7,6 +7,7 @@ from drfpasswordless.views import (
      VerifyAliasFromCallbackToken,
      ObtainEmailVerificationCallbackToken,
      ObtainMobileVerificationCallbackToken,
+     LogoutView,
 )
 
 app_name = 'drfpasswordless'
@@ -18,4 +19,5 @@ urlpatterns = [
      path(api_settings.PASSWORDLESS_VERIFY_PREFIX + 'email/', ObtainEmailVerificationCallbackToken.as_view(), name='verify_email'),
      path(api_settings.PASSWORDLESS_VERIFY_PREFIX + 'mobile/', ObtainMobileVerificationCallbackToken.as_view(), name='verify_mobile'),
      path(api_settings.PASSWORDLESS_VERIFY_PREFIX, VerifyAliasFromCallbackToken.as_view(), name='verify_token'),
+     path('api/logout/', LogoutView.as_view(), name='logout-api'),
 ]
