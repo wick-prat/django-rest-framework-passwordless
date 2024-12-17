@@ -25,6 +25,8 @@ class TokenAdmin(admin.ModelAdmin):
     fields = ('user', 'device_id', 'device_type')
     ordering = ('-created',)
     actions = None  # Actions not compatible with mapped IDs.
+    readonly_fields = ("user", "device_id", "device_type")
+    list_filter = ("device_type",)
 
     def get_changelist(self, request, **kwargs):
         return TokenChangeList
