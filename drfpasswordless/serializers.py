@@ -178,7 +178,6 @@ class AbstractBaseCallbackTokenSerializer(serializers.Serializer):
     token = TokenField(
         min_length=api_settings.PASSWORDLESS_TOKEN_LENGTH,
         max_length=api_settings.PASSWORDLESS_TOKEN_LENGTH,
-        validators=[token_age_validator]
     )
 
     def validate_alias(self, attrs):
@@ -209,6 +208,18 @@ class CallbackTokenAuthSerializer(AbstractBaseCallbackTokenSerializer):
             alias_type, alias = self.validate_alias(attrs)
             callback_token = attrs.get('token', None)
             user = User.objects.get(**{alias_type+'__iexact': alias})
+
+
+            #increment the attempt
+            token = CallbackToken.objects.filter(**{'user': user,
+                                                 'type': CallbackToken.TOKEN_TYPE_AUTH,
+                                                 'is_active': True}).first()
+
+            if token:
+                token.increment_attempts()
+
+            validate_token_age(callback_token)
+
             token = CallbackToken.objects.get(**{'user': user,
                                                  'key': callback_token,
                                                  'type': CallbackToken.TOKEN_TYPE_AUTH,
@@ -238,7 +249,7 @@ class CallbackTokenAuthSerializer(AbstractBaseCallbackTokenSerializer):
                 msg = _('Invalid Token')
                 raise serializers.ValidationError(msg)
         except CallbackToken.DoesNotExist:
-            msg = _('Invalid alias parameters provided.')
+            msg = _('Invalid OTP or OTP may be expired')
             raise serializers.ValidationError(msg)
         except User.DoesNotExist:
             msg = _('Invalid user alias parameters provided.')
