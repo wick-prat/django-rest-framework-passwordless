@@ -66,6 +66,16 @@ class CallbackToken(AbstractBaseCallbackToken):
 
     key = models.CharField(default=generate_numeric_token, max_length=6)
     type = models.CharField(max_length=20, choices=TOKEN_TYPES)
+    attempts = models.IntegerField(default=0)
 
     class Meta(AbstractBaseCallbackToken.Meta):
         verbose_name = 'Callback Token'
+
+    def increment_attempts(self):
+        """
+        Increment the number of attempts and deactivate if max attempts reached
+        """
+        self.attempts += 1
+        if self.attempts > 3:  # Max 3 attempts
+            self.is_active = False
+        self.save()
