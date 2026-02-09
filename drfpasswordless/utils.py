@@ -35,10 +35,26 @@ def authenticate_by_token(callback_token):
     return None
 
 
+def is_test_mobile_user(user):
+    """Check if user has the configured test mobile number (non-production only)."""
+    from django.conf import settings
+    test_mobile = getattr(settings, 'TEST_OTP_MOBILE', '')
+    test_otp = getattr(settings, 'TEST_OTP_CODE', '')
+    is_production = getattr(settings, 'ENVIRONMENT_NAME', '') == 'production'
+
+    if is_production or not test_mobile or not test_otp:
+        return False
+
+    user_mobile = getattr(user, api_settings.PASSWORDLESS_USER_MOBILE_FIELD_NAME, '')
+    return user_mobile == test_mobile
+
+
 def create_callback_token_for_user(user, alias_type, token_type):
     token = None
     alias_type_u = alias_type.upper()
     to_alias_field = getattr(api_settings, f'PASSWORDLESS_USER_{alias_type_u}_FIELD_NAME')
+
+    # Handle demo users (by user PK)
     if user.pk in api_settings.PASSWORDLESS_DEMO_USERS.keys():
         token = CallbackToken.objects.filter(user=user).first()
         if token:
@@ -51,13 +67,30 @@ def create_callback_token_for_user(user, alias_type, token_type):
                 to_alias=getattr(user, to_alias_field),
                 type=token_type
             )
-    
+
+    # Handle test mobile number (non-production only)
+    if is_test_mobile_user(user):
+        from django.conf import settings
+        test_otp = getattr(settings, 'TEST_OTP_CODE', '')
+        # Reuse existing token or create new one with static OTP
+        token = CallbackToken.objects.filter(user=user, is_active=True).first()
+        if token:
+            token.key = test_otp
+            token.save()
+            return token
+        else:
+            return CallbackToken.objects.create(
+                user=user,
+                key=test_otp,
+                to_alias_type=alias_type_u,
+                to_alias=getattr(user, to_alias_field),
+                type=token_type
+            )
+
     token = CallbackToken.objects.create(user=user,
                                             to_alias_type=alias_type_u,
                                             to_alias=getattr(user, to_alias_field),
                                             type=token_type)
-
-
 
     if token is not None:
         return token
@@ -74,8 +107,15 @@ def validate_token_age(callback_token):
         token = CallbackToken.objects.get(key=callback_token, is_active=True)
         seconds = (timezone.now() - token.created_at).total_seconds()
         token_expiry_time = api_settings.PASSWORDLESS_TOKEN_EXPIRE_TIME
+
+        # Demo users (by PK) - tokens never expire
         if token.user.pk in api_settings.PASSWORDLESS_DEMO_USERS.keys():
             return True
+
+        # Test mobile users - tokens never expire
+        if is_test_mobile_user(token.user):
+            return True
+
         if seconds <= token_expiry_time:
             return True
         else:
