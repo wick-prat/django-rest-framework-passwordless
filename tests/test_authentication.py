@@ -1,5 +1,5 @@
 from rest_framework import status
-from rest_framework.authtoken.models import Token
+from drfpasswordless.authtoken.models import Token
 from rest_framework.test import APITestCase
 
 from django.contrib.auth import get_user_model
@@ -240,8 +240,8 @@ class MobileSignUpCallbackTokenTests(APITestCase):
         api_settings.PASSWORDLESS_MOBILE_NOREPLY_NUMBER = DEFAULTS['PASSWORDLESS_MOBILE_NOREPLY_NUMBER']
 
 
-def dummy_token_creator(user):
-    token = Token.objects.create(key="dummy", user=user)
+def dummy_token_creator(user, device_id=None, device_type=None):
+    token = Token.objects.create(key="dummy", user=user, device_id=device_id, device_type=device_type)
     return (token, True)
 
 
@@ -364,4 +364,117 @@ class MobileLoginCallbackTokenTests(APITestCase):
         api_settings.PASSWORDLESS_TEST_SUPPRESSION = DEFAULTS['PASSWORDLESS_TEST_SUPPRESSION']
         api_settings.PASSWORDLESS_AUTH_TYPES = DEFAULTS['PASSWORDLESS_AUTH_TYPES']
         api_settings.PASSWORDLESS_MOBILE_NOREPLY_NUMBER = DEFAULTS['PASSWORDLESS_MOBILE_NOREPLY_NUMBER']
+        self.user.delete()
+
+
+class DemoUserStaticTokenTests(APITestCase):
+    """
+    A demo user's static PIN has to keep working login after login.
+    """
+
+    static_token = '123456'
+
+    def setUp(self):
+        api_settings.PASSWORDLESS_AUTH_TYPES = ['EMAIL']
+        api_settings.PASSWORDLESS_EMAIL_NOREPLY_ADDRESS = 'noreply@example.com'
+
+        self.email = 'demo@example.com'
+        self.url = reverse('drfpasswordless:auth_email')
+        self.challenge_url = reverse('drfpasswordless:auth_token')
+
+        self.email_field_name = api_settings.PASSWORDLESS_USER_EMAIL_FIELD_NAME
+        self.user = User.objects.create(**{self.email_field_name: self.email})
+
+        api_settings.PASSWORDLESS_DEMO_USERS = {self.user.pk: self.static_token}
+
+    def request_token(self):
+        return self.client.post(self.url, {'email': self.email})
+
+    def login(self, token):
+        return self.client.post(self.challenge_url, {'email': self.email, 'token': token})
+
+    def test_demo_user_static_token_is_issued(self):
+        self.assertEqual(self.request_token().status_code, status.HTTP_200_OK)
+
+        callback_token = CallbackToken.objects.filter(user=self.user, is_active=True).first()
+        self.assertEqual(callback_token.key, self.static_token)
+
+    def test_demo_user_can_log_in_repeatedly_with_static_token(self):
+        # more logins than the max-attempts cutoff
+        for _ in range(6):
+            self.assertEqual(self.request_token().status_code, status.HTTP_200_OK)
+            self.assertEqual(self.login(self.static_token).status_code, status.HTTP_200_OK)
+
+    def test_demo_user_static_token_survives_wrong_attempts(self):
+        self.assertEqual(self.request_token().status_code, status.HTTP_200_OK)
+
+        for _ in range(5):
+            self.assertEqual(self.login('000000').status_code, status.HTTP_400_BAD_REQUEST)
+
+        self.assertEqual(self.login(self.static_token).status_code, status.HTTP_200_OK)
+
+    def test_demo_user_gets_a_fresh_token_when_the_old_one_is_spent(self):
+        self.assertEqual(self.request_token().status_code, status.HTTP_200_OK)
+        CallbackToken.objects.filter(user=self.user).update(is_active=False, attempts=4)
+
+        self.assertEqual(self.request_token().status_code, status.HTTP_200_OK)
+        self.assertEqual(self.login(self.static_token).status_code, status.HTTP_200_OK)
+
+    def tearDown(self):
+        api_settings.PASSWORDLESS_DEMO_USERS = DEFAULTS['PASSWORDLESS_DEMO_USERS']
+        api_settings.PASSWORDLESS_AUTH_TYPES = DEFAULTS['PASSWORDLESS_AUTH_TYPES']
+        api_settings.PASSWORDLESS_EMAIL_NOREPLY_ADDRESS = DEFAULTS['PASSWORDLESS_EMAIL_NOREPLY_ADDRESS']
+        self.user.delete()
+
+
+class CallbackTokenAttemptsTests(APITestCase):
+    """
+    The max-attempts limit should only count wrong tokens.
+    """
+
+    def setUp(self):
+        api_settings.PASSWORDLESS_AUTH_TYPES = ['EMAIL']
+        api_settings.PASSWORDLESS_EMAIL_NOREPLY_ADDRESS = 'noreply@example.com'
+
+        self.email = 'aaron@example.com'
+        self.url = reverse('drfpasswordless:auth_email')
+        self.challenge_url = reverse('drfpasswordless:auth_token')
+
+        self.email_field_name = api_settings.PASSWORDLESS_USER_EMAIL_FIELD_NAME
+        self.user = User.objects.create(**{self.email_field_name: self.email})
+
+    def active_token_key(self):
+        return CallbackToken.objects.filter(user=self.user, is_active=True).first().key
+
+    def wrong_token(self, callback_token):
+        return '000000' if callback_token != '000000' else '111111'
+
+    def login(self, token):
+        return self.client.post(self.challenge_url, {'email': self.email, 'token': token})
+
+    def test_correct_token_does_not_count_as_an_attempt(self):
+        self.assertEqual(self.client.post(self.url, {'email': self.email}).status_code, status.HTTP_200_OK)
+        callback_token = self.active_token_key()
+
+        for _ in range(3):
+            self.assertEqual(self.login(self.wrong_token(callback_token)).status_code,
+                             status.HTTP_400_BAD_REQUEST)
+
+        self.assertEqual(self.login(callback_token).status_code, status.HTTP_200_OK)
+
+    def test_token_is_deactivated_after_too_many_wrong_attempts(self):
+        self.assertEqual(self.client.post(self.url, {'email': self.email}).status_code, status.HTTP_200_OK)
+        callback_token = self.active_token_key()
+
+        for _ in range(4):
+            self.assertEqual(self.login(self.wrong_token(callback_token)).status_code,
+                             status.HTTP_400_BAD_REQUEST)
+
+        # the limit still applies, even to the right code
+        self.assertEqual(self.login(callback_token).status_code, status.HTTP_400_BAD_REQUEST)
+        self.assertFalse(CallbackToken.objects.get(key=callback_token).is_active)
+
+    def tearDown(self):
+        api_settings.PASSWORDLESS_AUTH_TYPES = DEFAULTS['PASSWORDLESS_AUTH_TYPES']
+        api_settings.PASSWORDLESS_EMAIL_NOREPLY_ADDRESS = DEFAULTS['PASSWORDLESS_EMAIL_NOREPLY_ADDRESS']
         self.user.delete()

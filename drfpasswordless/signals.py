@@ -31,6 +31,10 @@ def check_unique_tokens(sender, instance, **kwargs):
     Note that here we've decided keys are unique even across auth and validation.
     We could consider relaxing this in the future as well by filtering on the instance.type.
     """
+    if instance.user_id in api_settings.PASSWORDLESS_DEMO_USERS.keys():
+        # a demo user's static key is meant to repeat
+        return
+
     if instance._state.adding:
         # save is called on a token to create it in the db
         # before creating check whether a token with the same key exists

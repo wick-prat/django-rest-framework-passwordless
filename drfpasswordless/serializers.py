@@ -210,13 +210,14 @@ class CallbackTokenAuthSerializer(AbstractBaseCallbackTokenSerializer):
             user = User.objects.get(**{alias_type+'__iexact': alias})
 
 
-            #increment the attempt
-            token = CallbackToken.objects.filter(**{'user': user,
-                                                 'type': CallbackToken.TOKEN_TYPE_AUTH,
-                                                 'is_active': True}).first()
+            # increment the attempt only on a wrong token, demo users exempt
+            if user.pk not in api_settings.PASSWORDLESS_DEMO_USERS.keys():
+                token = CallbackToken.objects.filter(**{'user': user,
+                                                     'type': CallbackToken.TOKEN_TYPE_AUTH,
+                                                     'is_active': True}).first()
 
-            if token:
-                token.increment_attempts()
+                if token and token.key != callback_token:
+                    token.increment_attempts()
 
             validate_token_age(callback_token)
 
