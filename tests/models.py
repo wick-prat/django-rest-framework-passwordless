@@ -15,6 +15,9 @@ class CustomUser(AbstractBaseUser):
     mobile = models.CharField(validators=[phone_regex], max_length=17, unique=True, blank=True, null=True)
     mobile_verified = models.BooleanField(default=False)
 
+    is_active = models.BooleanField(default=True)
+    is_superuser = models.BooleanField(default=False)
+
     objects = BaseUserManager()
 
     USERNAME_FIELD = 'email'

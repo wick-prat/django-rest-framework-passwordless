@@ -92,7 +92,14 @@ DEFAULTS = {
     'PASSWORDLESS_TOKEN_GENERATION_ATTEMPTS': 3,
 
     # The length of the token to send in email or sms, maximum 6
-    'PASSWORDLESS_TOKEN_LENGTH': 6
+    'PASSWORDLESS_TOKEN_LENGTH': 6,
+
+    # Allows logging in with alias + password as an alternative to a callback
+    # token, and lets authenticated users set their password.
+    'PASSWORDLESS_PASSWORD_AUTH_ENABLED': True,
+
+    # Refuses alias + password login for superusers.
+    'PASSWORDLESS_PASSWORD_AUTH_BLOCK_SUPERUSERS': True,
 }
 
 # List of settings that may be in string import notation.

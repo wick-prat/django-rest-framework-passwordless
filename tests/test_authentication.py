@@ -1,5 +1,5 @@
 from rest_framework import status
-from rest_framework.authtoken.models import Token
+from drfpasswordless.authtoken.models import Token
 from rest_framework.test import APITestCase
 
 from django.contrib.auth import get_user_model
@@ -240,7 +240,7 @@ class MobileSignUpCallbackTokenTests(APITestCase):
         api_settings.PASSWORDLESS_MOBILE_NOREPLY_NUMBER = DEFAULTS['PASSWORDLESS_MOBILE_NOREPLY_NUMBER']
 
 
-def dummy_token_creator(user):
+def dummy_token_creator(user, device_id=None, device_type=None):
     token = Token.objects.create(key="dummy", user=user)
     return (token, True)
 

@@ -1,7 +1,8 @@
 import logging
 from django.utils.translation import gettext_lazy as _
 from django.contrib.auth import get_user_model
-from django.core.exceptions import PermissionDenied
+from django.contrib.auth.password_validation import validate_password
+from django.core.exceptions import PermissionDenied, ValidationError as DjangoValidationError
 from django.core.validators import RegexValidator
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
@@ -311,6 +312,100 @@ class CallbackTokenVerificationSerializer(AbstractBaseCallbackTokenSerializer):
             pass
 
         raise serializers.ValidationError(msg)
+
+
+"""
+Password
+"""
+
+
+def user_has_password(user):
+    """
+    Django treats an empty password as usable, so check for one explicitly.
+    """
+    return bool(user.password) and user.has_usable_password()
+
+
+class PasswordAuthSerializer(serializers.Serializer):
+    """
+    Logs a user in with their alias and password instead of a callback token.
+    Every credential failure returns the same message so aliases can't be enumerated.
+    """
+    phone_regex = RegexValidator(regex=r'^\+[1-9]\d{1,14}$',
+                                 message="Mobile number must be entered in the format:"
+                                         " '+999999999'. Up to 15 digits allowed.")
+
+    email = serializers.EmailField(required=False)
+    mobile = serializers.CharField(required=False, validators=[phone_regex], max_length=17)
+    password = serializers.CharField(write_only=True, trim_whitespace=False)
+    device_id = serializers.CharField(required=False, max_length=64)
+    device_type = serializers.ChoiceField(choices=Token.DEVICE_TYPES, required=False)
+
+    default_error_messages = {
+        'invalid_credentials': _('Unable to log in with provided credentials.'),
+    }
+
+    def validate(self, attrs):
+        email = attrs.get('email', None)
+        mobile = attrs.get('mobile', None)
+
+        if bool(email) == bool(mobile):
+            raise serializers.ValidationError(_('Provide either an email or a mobile number.'))
+
+        alias_type, alias = ('email', email) if email else ('mobile', mobile)
+        if alias_type.upper() not in api_settings.PASSWORDLESS_AUTH_TYPES:
+            raise serializers.ValidationError(_('Login with %s is not enabled.') % alias_type)
+
+        password = attrs['password']
+        try:
+            user = User.objects.get(**{alias_type + '__iexact': alias})
+        except (User.DoesNotExist, User.MultipleObjectsReturned):
+            # Hash anyway so an unknown alias takes as long as a wrong password.
+            User().set_password(password)
+            self.fail('invalid_credentials')
+
+        if not user.check_password(password) or not user.is_active:
+            self.fail('invalid_credentials')
+
+        if api_settings.PASSWORDLESS_PASSWORD_AUTH_BLOCK_SUPERUSERS and getattr(user, 'is_superuser', False):
+            logger.info("drfpasswordless: Refused password login for superuser %s.", user.pk)
+            self.fail('invalid_credentials')
+
+        attrs['user'] = user
+        return attrs
+
+    def to_internal_value(self, data):
+        device_type = data.get('device_type', None)
+        if device_type and device_type not in dict(Token.DEVICE_TYPES).keys():
+            data = data.copy()
+            del data['device_type']
+
+        return super().to_internal_value(data)
+
+
+class SetPasswordSerializer(serializers.Serializer):
+    """
+    Sets or changes the authenticated user's password.
+    The current password is required once the user has one.
+    """
+    new_password = serializers.CharField(write_only=True, trim_whitespace=False)
+    current_password = serializers.CharField(write_only=True, required=False, trim_whitespace=False)
+
+    def validate(self, attrs):
+        user = self.context['request'].user
+
+        if user_has_password(user):
+            current_password = attrs.get('current_password', None)
+            if not current_password or not user.check_password(current_password):
+                raise serializers.ValidationError({'current_password': _('Current password is incorrect.')})
+
+        try:
+            validate_password(attrs['new_password'], user)
+        except DjangoValidationError as e:
+            raise serializers.ValidationError({'new_password': list(e.messages)})
+
+        attrs['user'] = user
+        return attrs
 
 
 """
