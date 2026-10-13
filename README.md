@@ -327,7 +327,7 @@ DEFAULTS = {
     'PASSWORDLESS_TOKEN_LENGTH': 6,
 
     # Allows logging in with alias + password as an alternative to a callback
-    # token, and lets authenticated users set their password.
+    # token. Passwords are set outside this package, e.g. the Django admin.
     'PASSWORDLESS_PASSWORD_AUTH_ENABLED': True,
 
     # Refuses alias + password login for superusers.

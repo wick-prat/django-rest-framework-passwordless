@@ -2,7 +2,6 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from django.contrib.auth import get_user_model
-from django.test import override_settings
 from django.urls import reverse
 from drfpasswordless.authtoken.models import Token
 from drfpasswordless.settings import api_settings, DEFAULTS
@@ -23,7 +22,6 @@ class PasswordTestCase(APITestCase):
         self.user.save()
 
         self.login_url = reverse('drfpasswordless:auth_password')
-        self.set_url = reverse('drfpasswordless:auth_password_set')
 
     def tearDown(self):
         api_settings.PASSWORDLESS_AUTH_TYPES = DEFAULTS['PASSWORDLESS_AUTH_TYPES']
@@ -113,62 +111,3 @@ class PasswordLoginTests(PasswordTestCase):
         response = self.login(email='aaron@example.com')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
-
-class SetPasswordTests(PasswordTestCase):
-
-    def setUp(self):
-        super().setUp()
-        self.new_user = User.objects.create(mobile='+15550000010')
-        self.new_user.set_unusable_password()
-        self.new_user.save()
-
-    def test_disabled_returns_404(self):
-        api_settings.PASSWORDLESS_PASSWORD_AUTH_ENABLED = False
-        self.client.force_authenticate(self.new_user)
-        response = self.client.post(self.set_url, {'new_password': 'a new password'})
-        self.assertEqual(response.status_code, status.HTTP_404_NOT_FOUND)
-
-    def test_requires_authentication(self):
-        response = self.client.post(self.set_url, {'new_password': 'a new password'})
-        self.assertIn(response.status_code, (status.HTTP_401_UNAUTHORIZED, status.HTTP_403_FORBIDDEN))
-
-    def test_first_password_needs_no_current_password(self):
-        self.client.force_authenticate(self.new_user)
-        response = self.client.post(self.set_url, {'new_password': 'a new password'})
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-        self.client.force_authenticate(None)
-
-        login = self.client.post(self.login_url, {'mobile': self.new_user.mobile, 'password': 'a new password'})
-        self.assertEqual(login.status_code, status.HTTP_200_OK)
-
-    def test_empty_password_counts_as_no_password(self):
-        user = User.objects.create(mobile='+15550000011', password='')
-        self.client.force_authenticate(user)
-        response = self.client.post(self.set_url, {'new_password': 'a new password'})
-        self.assertEqual(response.status_code, status.HTTP_200_OK)
-
-    def test_change_requires_correct_current_password(self):
-        self.client.force_authenticate(self.user)
-
-        missing = self.client.post(self.set_url, {'new_password': 'a new password'})
-        self.assertEqual(missing.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('current_password', missing.data)
-
-        wrong = self.client.post(self.set_url, {'new_password': 'a new password', 'current_password': 'wrong'})
-        self.assertEqual(wrong.status_code, status.HTTP_400_BAD_REQUEST)
-
-        right = self.client.post(self.set_url, {'new_password': 'a new password',
-                                                'current_password': self.password})
-        self.assertEqual(right.status_code, status.HTTP_200_OK)
-        self.user.refresh_from_db()
-        self.assertTrue(self.user.check_password('a new password'))
-
-    @override_settings(AUTH_PASSWORD_VALIDATORS=[
-        {'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
-         'OPTIONS': {'min_length': 10}},
-    ])
-    def test_password_validators_apply(self):
-        self.client.force_authenticate(self.new_user)
-        response = self.client.post(self.set_url, {'new_password': 'short'})
-        self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
-        self.assertIn('new_password', response.data)

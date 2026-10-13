@@ -1,8 +1,7 @@
 import logging
 from django.utils.translation import gettext_lazy as _
 from django.contrib.auth import get_user_model
-from django.contrib.auth.password_validation import validate_password
-from django.core.exceptions import PermissionDenied, ValidationError as DjangoValidationError
+from django.core.exceptions import PermissionDenied
 from django.core.validators import RegexValidator
 from rest_framework import serializers
 from rest_framework.exceptions import ValidationError
@@ -319,13 +318,6 @@ Password
 """
 
 
-def user_has_password(user):
-    """
-    Django treats an empty password as usable, so check for one explicitly.
-    """
-    return bool(user.password) and user.has_usable_password()
-
-
 class PasswordAuthSerializer(serializers.Serializer):
     """
     Logs a user in with their alias and password instead of a callback token.
@@ -381,31 +373,6 @@ class PasswordAuthSerializer(serializers.Serializer):
             del data['device_type']
 
         return super().to_internal_value(data)
-
-
-class SetPasswordSerializer(serializers.Serializer):
-    """
-    Sets or changes the authenticated user's password.
-    The current password is required once the user has one.
-    """
-    new_password = serializers.CharField(write_only=True, trim_whitespace=False)
-    current_password = serializers.CharField(write_only=True, required=False, trim_whitespace=False)
-
-    def validate(self, attrs):
-        user = self.context['request'].user
-
-        if user_has_password(user):
-            current_password = attrs.get('current_password', None)
-            if not current_password or not user.check_password(current_password):
-                raise serializers.ValidationError({'current_password': _('Current password is incorrect.')})
-
-        try:
-            validate_password(attrs['new_password'], user)
-        except DjangoValidationError as e:
-            raise serializers.ValidationError({'new_password': list(e.messages)})
-
-        attrs['user'] = user
-        return attrs
 
 
 """

@@ -14,7 +14,6 @@ from drfpasswordless.serializers import (
     EmailVerificationSerializer,
     MobileVerificationSerializer,
     PasswordAuthSerializer,
-    SetPasswordSerializer,
 )
 from drfpasswordless.services import TokenService
 
@@ -189,25 +188,6 @@ class ObtainAuthTokenFromPassword(AbstractBaseObtainAuthToken):
         if not api_settings.PASSWORDLESS_PASSWORD_AUTH_ENABLED:
             return Response(status=status.HTTP_404_NOT_FOUND)
         return super().post(request, *args, **kwargs)
-
-
-class SetPassword(APIView):
-    """
-    Sets or changes the authenticated user's password.
-    """
-    permission_classes = (IsAuthenticated,)
-    serializer_class = SetPasswordSerializer
-
-    def post(self, request, *args, **kwargs):
-        if not api_settings.PASSWORDLESS_PASSWORD_AUTH_ENABLED:
-            return Response(status=status.HTTP_404_NOT_FOUND)
-
-        serializer = self.serializer_class(data=request.data, context={'request': request})
-        serializer.is_valid(raise_exception=True)
-        user = serializer.validated_data['user']
-        user.set_password(serializer.validated_data['new_password'])
-        user.save(update_fields=['password'])
-        return Response({'detail': 'Password updated.'}, status=status.HTTP_200_OK)
 
 
 class VerifyAliasFromCallbackToken(APIView):
