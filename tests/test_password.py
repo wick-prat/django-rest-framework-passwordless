@@ -2,6 +2,7 @@ from rest_framework import status
 from rest_framework.test import APITestCase
 
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.urls import reverse
 from drfpasswordless.authtoken.models import Token
 from drfpasswordless.settings import api_settings, DEFAULTS
@@ -12,6 +13,7 @@ User = get_user_model()
 class PasswordTestCase(APITestCase):
 
     def setUp(self):
+        cache.clear()
         api_settings.PASSWORDLESS_AUTH_TYPES = ['MOBILE']
         api_settings.PASSWORDLESS_PASSWORD_AUTH_ENABLED = True
 
@@ -28,6 +30,8 @@ class PasswordTestCase(APITestCase):
         api_settings.PASSWORDLESS_PASSWORD_AUTH_ENABLED = DEFAULTS['PASSWORDLESS_PASSWORD_AUTH_ENABLED']
         api_settings.PASSWORDLESS_PASSWORD_AUTH_BLOCK_SUPERUSERS = \
             DEFAULTS['PASSWORDLESS_PASSWORD_AUTH_BLOCK_SUPERUSERS']
+        api_settings.PASSWORDLESS_PASSWORD_AUTH_MAX_FAILURES = DEFAULTS['PASSWORDLESS_PASSWORD_AUTH_MAX_FAILURES']
+        cache.clear()
 
 
 class PasswordLoginTests(PasswordTestCase):
@@ -111,3 +115,51 @@ class PasswordLoginTests(PasswordTestCase):
         response = self.login(email='aaron@example.com')
         self.assertEqual(response.status_code, status.HTTP_400_BAD_REQUEST)
 
+
+class PasswordLockoutTests(PasswordTestCase):
+
+    def setUp(self):
+        super().setUp()
+        api_settings.PASSWORDLESS_PASSWORD_AUTH_MAX_FAILURES = 5
+
+    def login(self, mobile=None, password=None):
+        return self.client.post(self.login_url, {'mobile': mobile or self.mobile,
+                                                 'password': password or self.password})
+
+    def fail_times(self, count, mobile=None):
+        for _ in range(count):
+            self.assertEqual(self.login(mobile=mobile, password='wrong').status_code,
+                             status.HTTP_400_BAD_REQUEST)
+
+    def test_locked_after_max_failures_even_with_right_password(self):
+        self.fail_times(5)
+
+        response = self.login()
+        self.assertEqual(response.status_code, status.HTTP_429_TOO_MANY_REQUESTS)
+        self.assertFalse(Token.objects.exists())
+
+    def test_success_resets_the_count(self):
+        self.fail_times(4)
+        self.assertEqual(self.login().status_code, status.HTTP_200_OK)
+
+        self.fail_times(4)
+        self.assertEqual(self.login().status_code, status.HTTP_200_OK)
+
+    def test_lockout_is_per_mobile(self):
+        other = User.objects.create(mobile='+15550000020')
+        other.set_password(self.password)
+        other.save()
+
+        self.fail_times(5)
+        self.assertEqual(self.login(mobile=other.mobile).status_code, status.HTTP_200_OK)
+
+    def test_unknown_mobile_locks_the_same_way(self):
+        unknown = '+15559999999'
+        self.fail_times(5, mobile=unknown)
+        self.assertEqual(self.login(mobile=unknown, password='wrong').status_code,
+                         status.HTTP_429_TOO_MANY_REQUESTS)
+
+    def test_zero_disables_lockout(self):
+        api_settings.PASSWORDLESS_PASSWORD_AUTH_MAX_FAILURES = 0
+        self.fail_times(10)
+        self.assertEqual(self.login().status_code, status.HTTP_200_OK)

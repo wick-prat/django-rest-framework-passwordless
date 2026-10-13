@@ -100,6 +100,13 @@ DEFAULTS = {
 
     # Refuses alias + password login for superusers.
     'PASSWORDLESS_PASSWORD_AUTH_BLOCK_SUPERUSERS': True,
+
+    # Failed password logins allowed per alias before password login is refused
+    # (429) for that alias until the window ends. 0 disables the lockout.
+    'PASSWORDLESS_PASSWORD_AUTH_MAX_FAILURES': 5,
+
+    # Window in seconds, counted from the first failure.
+    'PASSWORDLESS_PASSWORD_AUTH_LOCKOUT_SECONDS': 15 * 60,
 }
 
 # List of settings that may be in string import notation.

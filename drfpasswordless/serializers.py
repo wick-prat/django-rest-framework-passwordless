@@ -1,10 +1,11 @@
 import logging
 from django.utils.translation import gettext_lazy as _
 from django.contrib.auth import get_user_model
+from django.core.cache import cache
 from django.core.exceptions import PermissionDenied
 from django.core.validators import RegexValidator
 from rest_framework import serializers
-from rest_framework.exceptions import ValidationError
+from rest_framework.exceptions import Throttled, ValidationError
 from drfpasswordless.models import CallbackToken
 from drfpasswordless.settings import api_settings
 from drfpasswordless.utils import verify_user_alias, validate_token_age
@@ -348,23 +349,49 @@ class PasswordAuthSerializer(serializers.Serializer):
         if alias_type.upper() not in api_settings.PASSWORDLESS_AUTH_TYPES:
             raise serializers.ValidationError(_('Login with %s is not enabled.') % alias_type)
 
-        password = attrs['password']
+        # Keyed on the alias whether or not it exists, so a lockout reveals nothing.
+        failures_key = 'drfpasswordless:password_failures:%s:%s' % (alias_type, alias.lower())
+        max_failures = api_settings.PASSWORDLESS_PASSWORD_AUTH_MAX_FAILURES
+        if max_failures and cache.get(failures_key, 0) >= max_failures:
+            raise Throttled(detail=_('Too many failed login attempts. Try again later or log in with OTP.'))
+
+        user = self.authenticate_alias(alias_type, alias, attrs['password'])
+        if user is None:
+            if max_failures:
+                self.record_failure(failures_key)
+            self.fail('invalid_credentials')
+
+        cache.delete(failures_key)
+        attrs['user'] = user
+        return attrs
+
+    def authenticate_alias(self, alias_type, alias, password):
         try:
             user = User.objects.get(**{alias_type + '__iexact': alias})
         except (User.DoesNotExist, User.MultipleObjectsReturned):
             # Hash anyway so an unknown alias takes as long as a wrong password.
             User().set_password(password)
-            self.fail('invalid_credentials')
+            return None
 
         if not user.check_password(password) or not user.is_active:
-            self.fail('invalid_credentials')
+            return None
 
         if api_settings.PASSWORDLESS_PASSWORD_AUTH_BLOCK_SUPERUSERS and getattr(user, 'is_superuser', False):
             logger.info("drfpasswordless: Refused password login for superuser %s.", user.pk)
-            self.fail('invalid_credentials')
+            return None
 
-        attrs['user'] = user
-        return attrs
+        return user
+
+    @staticmethod
+    def record_failure(failures_key):
+        timeout = api_settings.PASSWORDLESS_PASSWORD_AUTH_LOCKOUT_SECONDS
+        if cache.add(failures_key, 1, timeout):
+            return
+        try:
+            cache.incr(failures_key)
+        except ValueError:
+            # The window expired between add and incr; start a new one.
+            cache.add(failures_key, 1, timeout)
 
     def to_internal_value(self, data):
         device_type = data.get('device_type', None)
