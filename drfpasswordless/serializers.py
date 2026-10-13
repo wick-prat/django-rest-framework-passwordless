@@ -349,7 +349,6 @@ class PasswordAuthSerializer(serializers.Serializer):
         if alias_type.upper() not in api_settings.PASSWORDLESS_AUTH_TYPES:
             raise serializers.ValidationError(_('Login with %s is not enabled.') % alias_type)
 
-        # Keyed on the alias whether or not it exists, so a lockout reveals nothing.
         failures_key = 'drfpasswordless:password_failures:%s:%s' % (alias_type, alias.lower())
         max_failures = api_settings.PASSWORDLESS_PASSWORD_AUTH_MAX_FAILURES
         if max_failures and cache.get(failures_key, 0) >= max_failures:
@@ -369,7 +368,6 @@ class PasswordAuthSerializer(serializers.Serializer):
         try:
             user = User.objects.get(**{alias_type + '__iexact': alias})
         except (User.DoesNotExist, User.MultipleObjectsReturned):
-            # Hash anyway so an unknown alias takes as long as a wrong password.
             User().set_password(password)
             return None
 
@@ -390,7 +388,6 @@ class PasswordAuthSerializer(serializers.Serializer):
         try:
             cache.incr(failures_key)
         except ValueError:
-            # The window expired between add and incr; start a new one.
             cache.add(failures_key, 1, timeout)
 
     def to_internal_value(self, data):

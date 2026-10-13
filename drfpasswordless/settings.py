@@ -94,18 +94,9 @@ DEFAULTS = {
     # The length of the token to send in email or sms, maximum 6
     'PASSWORDLESS_TOKEN_LENGTH': 6,
 
-    # Allows logging in with alias + password as an alternative to a callback
-    # token. Passwords are set outside this package, e.g. the Django admin.
     'PASSWORDLESS_PASSWORD_AUTH_ENABLED': True,
-
-    # Refuses alias + password login for superusers.
     'PASSWORDLESS_PASSWORD_AUTH_BLOCK_SUPERUSERS': True,
-
-    # Failed password logins allowed per alias before password login is refused
-    # (429) for that alias until the window ends. 0 disables the lockout.
     'PASSWORDLESS_PASSWORD_AUTH_MAX_FAILURES': 5,
-
-    # Window in seconds, counted from the first failure.
     'PASSWORDLESS_PASSWORD_AUTH_LOCKOUT_SECONDS': 15 * 60,
 }
 
